@@ -20,12 +20,11 @@
 
 
 import os
-import re
 import sys
-import socket
 import struct
 import binascii
 import lz4
+from buffer import Buffer
 
 debug = 0
 
@@ -35,83 +34,6 @@ EXPIRATION_MASK      = 0x02
 COUNTER_MASK         = 0x04
 COUNTER_UPDATE_MASK  = 0x08
 RANGE_TOMBSTONE_MASK = 0x10
-
-class Buffer:
-    def __init__(self, buf):
-        self.buf = buf
-        self.offset = 0
-        self.buflen = len(buf)
-        if (debug):
-            print "buflen: %d" % (self.buflen)
-
-    def readbytes(self, count):
-        if self.remaining() >= count:
-            return
-        self.rebuffer()
-
-    def rebuffer(self):
-        if (debug):
-            print "offset: ", self.offset
-        raise NotImplementedError("Not Implemented")
-        
-    def unpack_int(self):
-        int_size = struct.calcsize('i')
-        self.readbytes(int_size)
-        value = struct.unpack('>i', self.buf[self.offset:self.offset+int_size])[0]
-        self.offset += int_size
-        return value
-
-    def unpack_short(self):
-        short_size = struct.calcsize('h')
-        self.readbytes(short_size)
-        value = struct.unpack('>h', self.buf[self.offset:self.offset+short_size])[0]
-        self.offset += short_size
-        return value
-
-    def unpack_byte(self):
-        byte_size = struct.calcsize('B')
-        self.readbytes(byte_size)
-        value = struct.unpack('>B', self.buf[self.offset:self.offset+byte_size])[0]
-        self.offset += byte_size
-        return value
-
-    def unpack_utf_string(self):
-        length = self.unpack_short()
-        self.readbytes(length)
-        if length == 0:
-            return None
-        format = '%ds' % length
-        value = struct.unpack(format, self.buf[self.offset:self.offset+length])[0]
-        self.offset += length
-        return value
-
-    def unpack_longlong(self):
-        longlong_size = struct.calcsize('Q')
-        self.readbytes(longlong_size)
-        value = struct.unpack('>Q', self.buf[self.offset:self.offset+longlong_size])[0]
-        self.offset += longlong_size
-        return value
-
-    def unpack_data(self):
-        length = self.unpack_int()
-        if length > 0:
-            self.readbytes(length)
-            format = '%ds' % length
-            value = struct.unpack(format, self.buf[self.offset:self.offset+length])[0]
-            self.offset += length
-            return value
-        return None
-
-    def skip_data(self):
-        length = self.unpack_int()
-        if length > 0:
-            self.offset += length
-
-    def get_remaining(self):
-        return self.buf[self.offset:]
-
-    def remaining(self):
-        return self.buflen - self.offset
 
 class CompressedBuffer(Buffer):
     def __init__(self, datafile, compfile):
