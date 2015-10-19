@@ -276,8 +276,7 @@ class SSTableReader:
                 value = self.unpack_column_value()
                 if (value[0] == 0):
                     livecolumns += 1
-                #if (debug):
-                print "column name: %s mask: %x ts: %d" % (name, value[0], value[1])
+                print "column name: %s mask: %x ts: %d value: %s" % (name, value[0], value[1], binascii.hexlify(value[2]))
             else:
                 break
         print "columncount: %d livecolumns: %d" % (columncount, livecolumns)
