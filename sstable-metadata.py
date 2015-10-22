@@ -16,7 +16,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specif
 
-# a stand alone script to read rows and columns in a given SSTable
+# a stand alone script to read metadata of a given SSTable
 
 import sys
 import os
