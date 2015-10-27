@@ -18,7 +18,6 @@
 
 # a stand alone script to read rows and columns in a given SSTable
 
-
 import os
 import sys
 import struct
@@ -163,45 +162,36 @@ class SSTableReader:
     def __init__(self, indexfile, datafile, compfile):
         self.index = IndexInfo.parse(indexfile)
         self.buf = CompressedBuffer(datafile, compfile)
+        self.entryindex = 0
+        self.currow = None
 
-    def readrows(self, searchkey):
-        if searchkey != "":
-            for i in xrange(self.index.rowcount):
-                if self.index.entries[i][0].find(searchkey) != -1:
-                    print self.index.entries[i]
-                    if i + 1 < self.index.rowcount:
-                        rowsize = self.index.entries[i + 1][1] - self.index.entries[i][1]
-                    else:
-                        rowsize = self.buf.datasize
-                    self.buf.seek(self.index.entries[i][1])
-                    self.readrow(rowsize)
+    def hasnext(self):
+        if self.currow != None:
+            while (self.currow.hasnextcolumn()):
+                self.currow.nextcolumn()
+        return self.entryindex < self.index.rowcount
+
+    def next(self):
+        i = self.entryindex
+        self.entryindex += 1
+        if i + 1 < self.index.rowcount:
+            rowsize = self.index.entries[i + 1][1] - self.index.entries[i][1]
         else:
-            for i in xrange(self.index.rowcount):
+            rowsize = self.buf.datasize
+        self.currow = Row(self.index.entries[i], rowsize, self)
+        return self.currow
+
+    def seek(self, rowkey):
+        for i in xrange(self.index.rowcount):
+            if self.index.entries[i][0].find(rowkey) != -1:
+                self.entryindex = i + 1
                 if i + 1 < self.index.rowcount:
                     rowsize = self.index.entries[i + 1][1] - self.index.entries[i][1]
                 else:
                     rowsize = self.buf.datasize
-                self.readrow(rowsize)
-
-    def readrow(self, rowsize):
-        key = self.buf.unpack_utf_string()
-        print "row key: %s" % (key)
-        deletiontime = self.unpack_deletion_time()
-        print "localDeletionTime: %x markedForDeleteAt: %x" % (deletiontime[0], deletiontime[1])
-        off = 0
-        columncount = 0
-        livecolumns = 0
-        while True:
-            name = self.unpack_column_name()
-            if name != None:
-                columncount += 1
-                value = self.unpack_column_value()
-                if (value[0] == 0):
-                    livecolumns += 1
-                print "column name: %s mask: %x ts: %d value: %s" % (name, value[0], value[1], binascii.hexlify(value[2]))
-            else:
-                break
-        print "columncount: %d livecolumns: %d" % (columncount, livecolumns)
+                self.buf.seek(self.index.entries[i][1])
+                self.currow = Row(self.index.entries[i], rowsize, self)
+                return self.currow
 
     def unpack_deletion_time(self):
         localDeletionTime = self.buf.unpack_int()
@@ -212,39 +202,86 @@ class SSTableReader:
         name = self.buf.unpack_utf_string()
         return name
 
-    def unpack_column_value(self):
+    def unpack_column_value(self, name):
         flag = self.buf.unpack_byte()
         if (flag & RANGE_TOMBSTONE_MASK) != 0:
-            name = self.buf.unpack_utf_string()
+            maxcol = self.buf.unpack_utf_string()
             deletiontime = self.unpack_deletion_time()
-            return (RANGE_TOMBSTONE_MASK, deletiontime, name)
+            return RangeTombstone(name, maxcol, deletiontime)
         else:
             if ((flag & COUNTER_MASK) != 0):
                 timestampOfLastDelete = self.buf.unpack_longlong()
                 ts = self.buf.unpack_longlong()
                 value = self.buf.unpack_data()
-                return (COUNTER_MASK, ts, timestampOfLastDelete, value)
+                return CounterColumn(name, ts, value, timestampOfLastDelete)
             elif (flag & EXPIRATION_MASK) != 0:
                 ttl = self.buf.unpack_int()
                 expiration = self.buf.unpack_int()
                 ts = self.buf.unpack_longlong()
                 value = self.buf.unpack_data()
-                return (EXPIRATION_MASK, ts, ttl, expiration)
+                return ExpireColumn(name, ts, ttl, expiration, value)
             else:
                 ts = self.buf.unpack_longlong()
                 value = self.buf.unpack_data()
                 if (flag & COUNTER_UPDATE_MASK) != 0:
-                    return (COUNTER_UPDATE_MASK, value, ts)
+                    return CounterUpdateColumn(name, ts, value)
                 elif (flag & DELETION_MASK) != 0:
-                    return (DELETION_MASK, ts, value)
+                    return DeletedColumn(name, ts, value)
                 else:
-                    return (LIVE_MASK, ts, value)
+                    return Column(name, LIVE_MASK, ts, value)
 
-rowkey = ""
-if len(sys.argv) < 4:
-    print "Usage: python sstable <index file> <data file> <compression file> [row key]"
-    sys.exit(1)
 
-if len(sys.argv) > 4:
-    rowkey = sys.argv[4]
-SSTableReader(sys.argv[1], sys.argv[2], sys.argv[3]).readrows(rowkey)
+class Row:
+    def __init__(self, indexentry, size, reader):
+        self.indexentry = indexentry
+        self.size = size
+        self.reader = reader
+        self.key = self.reader.buf.unpack_utf_string()
+        self.deletiontime = self.reader.unpack_deletion_time()
+        self.colname = None
+        self.eof = False
+
+    def hasnextcolumn(self):
+        if self.eof == True:
+            return False
+        self.colname = self.reader.unpack_column_name()
+        if self.colname == None:
+            self.eof = True
+        return self.colname != None
+
+    def nextcolumn(self):
+        return self.reader.unpack_column_value(self.colname)
+    
+
+class Column:
+    def __init__(self, name, type, ts, value):
+        self.name = name
+        self.type = type
+        self.ts = ts
+        self.value = value
+
+class CounterColumn(Column):
+    def __init__(self, name, ts, value, timestampOfLastDelete):
+        self.super(name, COUNTER_MASK, ts, value)
+        self.timestampOfLastDelete = timestampOfLastDelete
+
+class CounterUpdateColumn(Column):
+    def __init__(self, name, ts, value):
+        self.super(name, COUNTER_UPDATE_MASK, ts, value)
+        
+
+class ExpiringColumn(Column):
+    def __init__(self, name, ts, ttl, expiration, value):
+        self.super(name, EXPIRATION_MASK, ts, value)
+        self.ttl == ttl
+        self.expiration = expiration
+
+class DeletedColumn(Column):
+    def __init__(self, name, ts, value):
+        self.super(name, DELETION_MASK, ts, value)
+
+class RangeTombstone:
+    def __init__(self, mincol, maxcol, deletiontime):
+        self.mincol = mincol
+        self.maxcol = maxcol
+        self.deletiontime = deletiontime
