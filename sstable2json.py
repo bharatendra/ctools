@@ -62,14 +62,14 @@ while reader.hasnext():
             sys.stdout.write(", ")
         column = row.nextcolumn()
         if type(column) == RangeTombstone:
-            sys.stdout.write("[\"%s\",\"%s\",%d,t,%d]" % (column.mincol,column.maxcol,column.deletiontime.markedForDeleteAt,column.deletiontime.localDeletionTime))
+            sys.stdout.write("[\"%s\",\"%s\",%d,\"t\",%d]" % (column.mincol,column.maxcol,column.deletiontime.markedForDeleteAt,column.deletiontime.localDeletionTime))
         else:
             if type(column) == DeletedColumn:
-                sys.stdout.write("[\"%s\",\"%s\",%d,d]" % (column.name, binascii.hexlify(column.value), column.ts))
+                sys.stdout.write("[\"%s\",\"%s\",%d,\"d\"]" % (column.name, binascii.hexlify(column.value), column.ts))
             elif type(column) == ExpiringColumn:
-                sys.stdout.write("[\"%s\",\"%s\",%d,e,%d,%d]" % (column.name, binascii.hexlify(column.value), column.ts,column.ttl,column.expiration))
+                sys.stdout.write("[\"%s\",\"%s\",%d,\"e\",%d,%d]" % (column.name, binascii.hexlify(column.value), column.ts,column.ttl,column.expiration))
             elif type(column) == CounterColumn:
-                sys.stdout.write("[\"%s\",\"%s\",%d,c,%d]" % (column.name, binascii.hexlify(column.value), column.ts, column.timestampOfLastDelete))
+                sys.stdout.write("[\"%s\",\"%s\",%d,\"c\",%d]" % (column.name, binascii.hexlify(column.value), column.ts, column.timestampOfLastDelete))
             else:
                 sys.stdout.write("[\"%s\",\"%s\",%d]" % (column.name, binascii.hexlify(column.value), column.ts))
     sys.stdout.write("]}")
