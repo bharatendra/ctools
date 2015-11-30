@@ -28,8 +28,8 @@ if len(sys.argv) < 2:
     sys.exit(1)
 
 datafile = sys.argv[1]
-indexfile = datafile.replace("Data", "Index")
-compfile = datafile.replace("Data", "CompressionInfo")
+indexfile = datafile.replace("-Data", "-Index")
+compfile = datafile.replace("-Data", "-CompressionInfo")
 
 if os.path.isfile(datafile) != True:
     print "%s not exists" % datafile
