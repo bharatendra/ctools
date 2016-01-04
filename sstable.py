@@ -262,23 +262,23 @@ class Column:
 
 class CounterColumn(Column):
     def __init__(self, name, ts, value, timestampOfLastDelete):
-        self.super(name, COUNTER_MASK, ts, value)
+        Column.__init__(self, name, COUNTER_MASK, ts, value)
         self.timestampOfLastDelete = timestampOfLastDelete
 
 class CounterUpdateColumn(Column):
     def __init__(self, name, ts, value):
-        self.super(name, COUNTER_UPDATE_MASK, ts, value)
+        Column.__init__(self, name, COUNTER_UPDATE_MASK, ts, value)
         
 
 class ExpiringColumn(Column):
     def __init__(self, name, ts, ttl, expiration, value):
-        self.super(name, EXPIRATION_MASK, ts, value)
+        Column.__init__(self, name, EXPIRATION_MASK, ts, value)
         self.ttl == ttl
         self.expiration = expiration
 
 class DeletedColumn(Column):
     def __init__(self, name, ts, value):
-        self.super(name, DELETION_MASK, ts, value)
+        Column.__init__(self, name, DELETION_MASK, ts, value)
 
 class RangeTombstone:
     def __init__(self, mincol, maxcol, deletiontime):
