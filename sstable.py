@@ -220,7 +220,7 @@ class SSTableReader:
                 expiration = self.buf.unpack_int()
                 ts = self.buf.unpack_longlong()
                 value = self.buf.unpack_data()
-                return ExpireColumn(name, ts, ttl, expiration, value)
+                return ExpiringColumn(name, ts, ttl, expiration, value)
             else:
                 ts = self.buf.unpack_longlong()
                 value = self.buf.unpack_data()
@@ -260,6 +260,8 @@ class Column:
         self.type = type
         self.ts = ts
         self.value = value
+	if value is None:
+		self.value = ''
 
 class CounterColumn(Column):
     def __init__(self, name, ts, value, timestampOfLastDelete):
@@ -274,7 +276,7 @@ class CounterUpdateColumn(Column):
 class ExpiringColumn(Column):
     def __init__(self, name, ts, ttl, expiration, value):
         Column.__init__(self, name, EXPIRATION_MASK, ts, value)
-        self.ttl == ttl
+        self.ttl = ttl
         self.expiration = expiration
 
 class DeletedColumn(Column):
@@ -311,5 +313,4 @@ class SSTableFileName:
 
     def __repr__(self):
         return "keyspace: %s columnfamily: %s version: %s generation: %s component: %s" % (self.keyspace, self.columnfamily, self.version, self.generation, self.component)
-
 
