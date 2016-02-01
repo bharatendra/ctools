@@ -21,62 +21,116 @@
 import sys
 import os
 from buffer import Buffer
+from sstable import SSTableFileName
 
 class SSTableMetadata:
-    def __init__(self, rowsizes, colcounts, replaysegid, replaypos, tsmin, tsmax, maxlocaldeletiontime, bloomfilterfpchance, compressionratio, partitioner, ancestors, tombstonehistogram, sstablelevel, mincolnames, maxcolnames):
-        self.rowsizes = rowsizes
-        self.colcounts = colcounts
-        self.replaysegid = replaysegid
-        self.replaypos = replaypos
-        self.tsmin = tsmin
-        self.tsmax = tsmax
-        self.maxlocaldeletiontime = maxlocaldeletiontime
-        self.bloomfilterfpchance = bloomfilterfpchance
-        self.compressionratio = compressionratio
-        self.partitioner = partitioner
-        self.ancestors = ancestors
-        self.tombstonehistogram = tombstonehistogram
-        self.sstablelevel = sstablelevel
-        self.mincolnames = mincolnames
-        self.maxcolnames = maxcolnames
+    version = ''
+    rowsizes = []
+    colcounts = []
+    replaysegid = 0
+    replaypos = 0
+    tsmin = 0
+    tsmax = 0
+    maxlocaldeletiontime = 0
+    bloomfilterfpchance = 0.0
+    compressionratio = 0.0
+    partitioner = ''
+    ancestors = []
+    tombstonehistogram = []
+    sstablelevel = 0
+    mincolnames = []
+    maxcolnames = []
+    repiredat = 0
+    haslegacycountershards = []
+    cardinality = []
 
-    def parse(self, filename):
+    def parse(self, filename, version):
         size = os.stat(filename).st_size
         remaining = size
         f = open(filename, 'r')
         buf = Buffer(f.read())
         f.close()
-        rowsizes = SSTableMetadata.unpack_estimated_histogram(buf)
-        colcounts = self.unpack_estimated_histogram(buf)
-        replaysegid = buf.unpack_longlong()
-        replaypos = buf.unpack_int()
-        tsmin = buf.unpack_longlong()
-        tsmax = buf.unpack_longlong()
-        maxlocaldeletiontime = buf.unpack_int()
-        bloomfilterfpchance = buf.unpack_double()
-        compressionratio = buf.unpack_double()
-        partitioner = buf.unpack_utf_string()
-        ancestorscount = buf.unpack_int()
-        ancestors = []
-        for i in xrange(ancestorscount):
-            ancestors.append(buf.unpack_int())
-        tombstonehistogram = self.unpack_streaming_histogram(buf)
-        sstablelevel = 0;
-        if (buf.available()):
-            sstablelevel = buf.unpack_int()
-        mincolnames = []
-        maxcolnames = []
-        count = buf.unpack_int()
-        for i in xrange(count):
-            mincolnames.append(buf.unpack_utf_string())
-        count = buf.unpack_int()
-        for i in xrange(count):
-            maxcolnames.append(buf.unpack_utf_string())
-        return SSTableMetadata(rowsizes, colcounts, replaysegid, replaypos, tsmin, tsmax, maxlocaldeletiontime, bloomfilterfpchance, compressionratio, partitioner, ancestors, tombstonehistogram, sstablelevel, mincolnames, maxcolnames)
+        metadata = SSTableMetadata()
+        metadata.version = version
+        if version >= 'ka':
+            metadata.new_metadata_parser(buf)
+        else:
+            metadata.legacy_metadata_parser(buf)
+        return metadata
     parse = classmethod(parse)
+
+    def legacy_metadata_parser(self, buf):
+        self.rowsizes = SSTableMetadata.unpack_estimated_histogram(buf)
+        self.colcounts = SSTableMetadata.unpack_estimated_histogram(buf)
+        self.replaysegid = buf.unpack_longlong()
+        self.replaypos = buf.unpack_int()
+        self.tsmin = buf.unpack_longlong()
+        self.tsmax = buf.unpack_longlong()
+        self.maxlocaldeletiontime = buf.unpack_int()
+        self.bloomfilterfpchance = buf.unpack_double()
+        self.compressionratio = buf.unpack_double()
+        self.partitioner = buf.unpack_utf_string()
+        self.ancestorscount = buf.unpack_int()
+        self.ancestors = []
+        for i in xrange(ancestorscount):
+            self.ancestors.append(buf.unpack_int())
+        self.tombstonehistogram = self.unpack_streaming_histogram(buf)
+        self.sstablelevel = buf.unpack_int()
+        self.mincolnames = []
+        self.maxcolnames = []
+        count = buf.unpack_int()
+        for i in xrange(count):
+            self.mincolnames.append(buf.unpack_utf_string())
+        count = buf.unpack_int()
+        for i in xrange(count):
+            self.maxcolnames.append(buf.unpack_utf_string())
+
+    def new_metadata_parser(self, buf):
+        numcomponents = buf.unpack_int()
+        toc = {}
+        
+        for i in xrange(numcomponents):
+            type = buf.unpack_int()
+            val = buf.unpack_int()
+            toc[type] = val
+        for j in xrange(3):
+            if j in toc:
+                buf.seek(toc[j])
+                if j == 0:
+                    self.partitioner = buf.unpack_utf_string()
+                    self.bloomfilterfpchance = buf.unpack_double()
+                elif j == 1:
+                    ancestorscount = buf.unpack_int()
+                    self.ancestors = []
+                    for a in xrange(ancestorscount):
+                        self.ancestors.append(buf.unpack_int())
+                    self.cardinality = buf.unpack_data()
+                else:
+                    self.rowsizes = SSTableMetadata.unpack_estimated_histogram(buf)
+                    self.colcounts = SSTableMetadata.unpack_estimated_histogram(buf)
+                    self.replaysegid = buf.unpack_longlong()
+                    self.replaypos = buf.unpack_int()
+                    self.tsmin = buf.unpack_longlong()
+                    self.tsmax = buf.unpack_longlong()
+                    self.maxlocaldeletiontime = buf.unpack_int()
+                    self.compressionratio = buf.unpack_double()
+                    self.tombstonehistogram = self.unpack_streaming_histogram(buf)
+                    self.sstablelevel = buf.unpack_int()
+                    self.repairedat = buf.unpack_longlong()
+                    self.mincolnames = []
+                    self.maxcolnames = []
+                    count = buf.unpack_int()
+                    for i in xrange(count):
+                        self.mincolnames.append(buf.unpack_utf_string())
+                    count = buf.unpack_int()
+                    for i in xrange(count):
+                        self.maxcolnames.append(buf.unpack_utf_string())
+                    self.haslegacycountershards = buf.unpack_byte()
+        
 
     def unpack_estimated_histogram(self, buf):
         size = buf.unpack_int()
+        print "size: ", size
         offsets = [0 for i in xrange(size - 1)]
         buckets = [0 for i in xrange(size)]
         for i in xrange(size):
@@ -85,6 +139,8 @@ class SSTableMetadata:
             else:
                 offsets[i - 1] = buf.unpack_longlong()
             buckets[i] = buf.unpack_longlong()
+        print "offsets: ", offsets
+        print "buckets: ", buckets
         return (offsets, buckets)
     unpack_estimated_histogram = classmethod(unpack_estimated_histogram)
 
@@ -100,11 +156,18 @@ class SSTableMetadata:
     unpack_streaming_histogram = classmethod(unpack_streaming_histogram)
 
     def __repr__(self):
-        return "rowSizes: %s\ncolumnCounts: %s\nreplaySegId: %d\nreplayPosition: %d\nminTimestamp: %d\nmaxTimestamp: %d\nmaxLocalDeletionTime: %d\nbloomFilterFPChance: %f\ncompressionRatio: %f\npartitioner: %s\nancestors: %s\ntombstoneHistogram: %s\nsstableLevel: %d\nminColumnNames: %s\nmaxColumnNames: %s\n" % (self.rowsizes, self.colcounts, self.replaysegid, self.replaypos, self.tsmin, self.tsmax, self.maxlocaldeletiontime, self.bloomfilterfpchance, self.compressionratio, self.partitioner, self.ancestors, self.tombstonehistogram, self.sstablelevel, self.mincolnames, self.maxcolnames)
-
+        if self.version < 'ka':
+            return "rowSizes: %s\ncolumnCounts: %s\nreplaySegId: %d\nreplayPosition: %d\nminTimestamp: %d\nmaxTimestamp: %d\nmaxLocalDeletionTime: %d\nbloomFilterFPChance: %f\ncompressionRatio: %f\npartitioner: %s\nancestors: %s\ntombstoneHistogram: %s\nsstableLevel: %d\nminColumnNames: %s\nmaxColumnNames: %s\n" % (self.rowsizes, self.colcounts, self.replaysegid, self.replaypos, self.tsmin, self.tsmax, self.maxlocaldeletiontime, self.bloomfilterfpchance, self.compressionratio, self.partitioner, self.ancestors, self.tombstonehistogram, self.sstablelevel, self.mincolnames, self.maxcolnames)
+        else:
+            return "rowSizes: %s\ncolumnCounts: %s\nreplaySegId: %d\nreplayPosition: %d\nminTimestamp: %d\nmaxTimestamp: %d\nmaxLocalDeletionTime: %d\nbloomFilterFPChance: %f\ncompressionRatio: %f\npartitioner: %s\nancestors: %s\ntombstoneHistogram: %s\nsstableLevel: %d\nrepairdAt: %d\nminColumnNames: %s\nmaxColumnNames: %s\nhasLegacyCounterShards: %s\n" % (self.rowsizes, self.colcounts, self.replaysegid, self.replaypos, self.tsmin, self.tsmax, self.maxlocaldeletiontime, self.bloomfilterfpchance, self.compressionratio, self.partitioner, self.ancestors, self.tombstonehistogram, self.sstablelevel, self.repairedat, self.mincolnames, self.maxcolnames, self.haslegacycountershards)
+        
+                 
 if len(sys.argv) < 2:
     print "Usage: python sstable-metadata.py <stats file>"
     sys.exit(1)
 
-metadata = SSTableMetadata.parse(sys.argv[1])
+filename = sys.argv[1]
+sstable = SSTableFileName.parse(filename)
+print sstable
+metadata = SSTableMetadata.parse(sys.argv[1], sstable.version)
 print metadata

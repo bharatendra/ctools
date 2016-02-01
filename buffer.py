@@ -20,7 +20,7 @@
 
 import struct
 
-debug = 0
+debug = 1
 class Buffer:
     def __init__(self, buf):
         self.buf = buf
@@ -107,3 +107,6 @@ class Buffer:
 
     def available(self):
         return (self.remaining() > 0)
+
+    def seek(self, off):
+        self.offset = off

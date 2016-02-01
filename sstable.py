@@ -23,6 +23,7 @@ import sys
 import struct
 import binascii
 import lz4
+import re
 from buffer import Buffer
 
 debug = 0
@@ -285,3 +286,30 @@ class RangeTombstone:
         self.mincol = mincol
         self.maxcol = maxcol
         self.deletiontime = deletiontime
+
+class SSTableFileName:
+    def __init__(self, ks, cf, version, generation, component):
+        self.keyspace = ks
+        self.columnfamily = cf
+        self.version = version
+        self.generation = generation
+        self.component = component
+
+    def parse(self, filename):
+        #usertable-data-ka-1-Statistics.db
+        name = os.path.basename(filename)
+        m = re.compile(r'(.*)-(.*)-(.*)-(.*)-(.*).db').match(name)
+        if m != None:
+            ks = m.groups()[0]
+            cf = m.groups()[1]
+            ver = m.groups()[2]
+            gen = m.groups()[3]
+            comp = m.groups()[4]
+            return SSTableFileName(ks, cf, ver, gen, comp)
+        return None
+    parse = classmethod(parse)
+
+    def __repr__(self):
+        return "keyspace: %s columnfamily: %s version: %s generation: %s component: %s" % (self.keyspace, self.columnfamily, self.version, self.generation, self.component)
+
+
