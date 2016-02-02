@@ -34,6 +34,8 @@ EXPIRATION_MASK      = 0x02
 COUNTER_MASK         = 0x04
 COUNTER_UPDATE_MASK  = 0x08
 RANGE_TOMBSTONE_MASK = 0x10
+INT_MAX_VALUE = 0x7fffffff
+LONG_MIN_VALUE = 0x8000000000000000
 
 class CompressedBuffer(Buffer):
     def __init__(self, datafile, compfile):
@@ -197,7 +199,7 @@ class SSTableReader:
     def unpack_deletion_time(self):
         localDeletionTime = self.buf.unpack_int()
         markedForDeleteAt = self.buf.unpack_longlong()
-        return (localDeletionTime, markedForDeleteAt)
+        return DeletionTime(markedForDeleteAt, localDeletionTime)
 
     def unpack_column_name(self):
         name = self.buf.unpack_utf_string()
@@ -252,7 +254,9 @@ class Row:
 
     def nextcolumn(self):
         return self.reader.unpack_column_value(self.colname)
-    
+
+    def getdeletioninfo(self):
+        return self.deletiontime
 
 class Column:
     def __init__(self, name, type, ts, value):
@@ -289,6 +293,14 @@ class RangeTombstone:
         self.maxcol = maxcol
         self.deletiontime = deletiontime
 
+class DeletionTime:
+    def __init__(self, markedForDeleteAt, localDeletionTime):
+        self.markedForDeleteAt = markedForDeleteAt
+        self.localDeletionTime = localDeletionTime
+
+    def islive(self):
+        return self.markedForDeleteAt == LONG_MIN_VALUE and self.localDeletionTime == INT_MAX_VALUE
+ 
 class SSTableFileName:
     def __init__(self, ks, cf, version, generation, component):
         self.keyspace = ks

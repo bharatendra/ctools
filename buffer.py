@@ -20,7 +20,7 @@
 
 import struct
 
-debug = 1
+debug = 0
 class Buffer:
     def __init__(self, buf):
         self.buf = buf

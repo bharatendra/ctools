@@ -23,6 +23,48 @@ import os
 import binascii
 from sstable import *
 
+def export(reader):
+    firstrow = True
+    print "["
+    while reader.hasnext():
+        if firstrow == True:
+            firstrow = False
+        else:
+            sys.stdout.write(",\n")
+        row = reader.next()
+        sys.stdout.write("{\"key\": \"%s\",\n" % binascii.hexlify(row.key))
+        if row.getdeletioninfo().islive() == False:
+            sys.stdout.write(" \"metadata\": ")
+            sys.stdout.write("{");
+            sys.stdout.write("\"deletionInfo\": ")
+            sys.stdout.write("{\"markedForDeleteAt\": %d" %  row.getdeletioninfo().markedForDeleteAt)
+            sys.stdout.write(", \"localDeletionTime\": %d}" %  row.getdeletioninfo().localDeletionTime)
+            sys.stdout.write("}")
+            sys.stdout.write(",\n")
+
+        sys.stdout.write(" ");
+        firstcol = True
+        sys.stdout.write("\"cells\": [")
+        while row.hasnextcolumn():
+            if firstcol == True:
+                firstcol = False
+            else:
+                sys.stdout.write(", ")
+            column = row.nextcolumn()
+            if isinstance(column, RangeTombstone):
+                sys.stdout.write("[\"%s\",\"%s\",%d,\"t\",%d]" % (column.mincol,column.maxcol,column.deletiontime.markedForDeleteAt,column.deletiontime.localDeletionTime))
+            else:
+                if isinstance(column, DeletedColumn):
+                    sys.stdout.write("[\"%s\",\"%s\",%d,\"d\"]" % (column.name, binascii.hexlify(column.value), column.ts))
+                elif isinstance(column, ExpiringColumn):
+                    sys.stdout.write("[\"%s\",\"%s\",%d,\"e\",%d,%d]" % (column.name, binascii.hexlify(column.value), column.ts,column.ttl,column.expiration))
+                elif isinstance(column, CounterColumn):
+                    sys.stdout.write("[\"%s\",\"%s\",%d,\"c\",%d]" % (column.name, binascii.hexlify(column.value), column.ts, column.timestampOfLastDelete))
+                else:
+                    sys.stdout.write("[\"%s\",\"%s\",%d]" % (column.name, binascii.hexlify(column.value), column.ts))
+        sys.stdout.write("]}")
+    sys.stdout.write("\n]\n")
+
 if len(sys.argv) < 2:
     print "Usage: python sstable <data file>"
     sys.exit(1)
@@ -44,33 +86,4 @@ if os.path.isfile(compfile) != True:
     sys.exit(1)
 
 reader = SSTableReader(indexfile, datafile, compfile)
-
-firstrow = True
-print "["
-while reader.hasnext():
-    if firstrow == True:
-        firstrow = False
-    else:
-        sys.stdout.write(",\n")
-    row = reader.next()
-    sys.stdout.write("{\"key\": \"%s\",\"columns\": [" % binascii.hexlify(row.key))
-    firstcol = True
-    while row.hasnextcolumn():
-        if firstcol == True:
-            firstcol = False
-        else:
-            sys.stdout.write(", ")
-        column = row.nextcolumn()
-        if isinstance(column, RangeTombstone):
-            sys.stdout.write("[\"%s\",\"%s\",%d,\"t\",%d]" % (column.mincol,column.maxcol,column.deletiontime.markedForDeleteAt,column.deletiontime.localDeletionTime))
-        else:
-            if isinstance(column, DeletedColumn):
-                sys.stdout.write("[\"%s\",\"%s\",%d,\"d\"]" % (column.name, binascii.hexlify(column.value), column.ts))
-            elif isinstance(column, ExpiringColumn):
-                sys.stdout.write("[\"%s\",\"%s\",%d,\"e\",%d,%d]" % (column.name, binascii.hexlify(column.value), column.ts,column.ttl,column.expiration))
-            elif isinstance(column, CounterColumn):
-                sys.stdout.write("[\"%s\",\"%s\",%d,\"c\",%d]" % (column.name, binascii.hexlify(column.value), column.ts, column.timestampOfLastDelete))
-            else:
-                sys.stdout.write("[\"%s\",\"%s\",%d]" % (column.name, binascii.hexlify(column.value), column.ts))
-    sys.stdout.write("]}")
-sys.stdout.write("\n]\n")
+export(reader)
