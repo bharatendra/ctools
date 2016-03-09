@@ -53,13 +53,41 @@ class SSTableMetadata:
         metadata = SSTableMetadata()
         metadata.version = version
         if version >= 'ka':
-            metadata.new_metadata_parser(buf)
+            metadata.parse_metadata_version_ka(buf, version)
+        elif version >= 'ja':
+            metadata.parse_metadata_version_ja(buf, version)
+        elif version >= 'ia':
+            metadata.parse_metadata_version_ia(buf, version)
+        elif version >= 'ha':
+            metadata.parse_metadata_version_ia(buf, version)
         else:
-            metadata.legacy_metadata_parser(buf)
+            print "version %s not supported" % (version)
         return metadata
     parse = classmethod(parse)
 
-    def legacy_metadata_parser(self, buf):
+
+    def parse_metadata_version_ia(self, buf, version):
+        self.rowsizes = SSTableMetadata.unpack_estimated_histogram(buf)
+        self.colcounts = SSTableMetadata.unpack_estimated_histogram(buf)
+        self.replaysegid = buf.unpack_longlong()
+        self.replaypos = buf.unpack_int()
+        if version >= 'ib':
+            self.tsmin = buf.unpack_longlong()
+        if version >= 'hd':
+            self.tsmax = buf.unpack_longlong()
+        if version >= 'hb':
+            self.compressionratio = buf.unpack_double()
+        if version >= 'hc':
+            self.partitioner = buf.unpack_utf_string()
+        if version >= 'he':
+            ancestorscount = buf.unpack_int()
+            self.ancestors = []
+            for i in xrange(ancestorscount):
+                self.ancestors.append(buf.unpack_int())
+        if version >= 'ia':
+            self.tombstonehistogram = self.unpack_streaming_histogram(buf)
+
+    def parse_metadata_version_ja(self, buf, version):
         self.rowsizes = SSTableMetadata.unpack_estimated_histogram(buf)
         self.colcounts = SSTableMetadata.unpack_estimated_histogram(buf)
         self.replaysegid = buf.unpack_longlong()
@@ -70,7 +98,7 @@ class SSTableMetadata:
         self.bloomfilterfpchance = buf.unpack_double()
         self.compressionratio = buf.unpack_double()
         self.partitioner = buf.unpack_utf_string()
-        self.ancestorscount = buf.unpack_int()
+        ancestorscount = buf.unpack_int()
         self.ancestors = []
         for i in xrange(ancestorscount):
             self.ancestors.append(buf.unpack_int())
@@ -85,7 +113,7 @@ class SSTableMetadata:
         for i in xrange(count):
             self.maxcolnames.append(buf.unpack_utf_string())
 
-    def new_metadata_parser(self, buf):
+    def parse_metadata_version_ka(self, buf, version):
         numcomponents = buf.unpack_int()
         toc = {}
         
@@ -130,7 +158,6 @@ class SSTableMetadata:
 
     def unpack_estimated_histogram(self, buf):
         size = buf.unpack_int()
-        print "size: ", size
         offsets = [0 for i in xrange(size - 1)]
         buckets = [0 for i in xrange(size)]
         for i in xrange(size):
@@ -139,8 +166,6 @@ class SSTableMetadata:
             else:
                 offsets[i - 1] = buf.unpack_longlong()
             buckets[i] = buf.unpack_longlong()
-        print "offsets: ", offsets
-        print "buckets: ", buckets
         return (offsets, buckets)
     unpack_estimated_histogram = classmethod(unpack_estimated_histogram)
 
@@ -156,10 +181,12 @@ class SSTableMetadata:
     unpack_streaming_histogram = classmethod(unpack_streaming_histogram)
 
     def __repr__(self):
-        if self.version < 'ka':
-            return "rowSizes: %s\ncolumnCounts: %s\nreplaySegId: %d\nreplayPosition: %d\nminTimestamp: %d\nmaxTimestamp: %d\nmaxLocalDeletionTime: %d\nbloomFilterFPChance: %f\ncompressionRatio: %f\npartitioner: %s\nancestors: %s\ntombstoneHistogram: %s\nsstableLevel: %d\nminColumnNames: %s\nmaxColumnNames: %s\n" % (self.rowsizes, self.colcounts, self.replaysegid, self.replaypos, self.tsmin, self.tsmax, self.maxlocaldeletiontime, self.bloomfilterfpchance, self.compressionratio, self.partitioner, self.ancestors, self.tombstonehistogram, self.sstablelevel, self.mincolnames, self.maxcolnames)
-        else:
+        if self.version >= 'ka':
             return "rowSizes: %s\ncolumnCounts: %s\nreplaySegId: %d\nreplayPosition: %d\nminTimestamp: %d\nmaxTimestamp: %d\nmaxLocalDeletionTime: %d\nbloomFilterFPChance: %f\ncompressionRatio: %f\npartitioner: %s\nancestors: %s\ntombstoneHistogram: %s\nsstableLevel: %d\nrepairdAt: %d\nminColumnNames: %s\nmaxColumnNames: %s\nhasLegacyCounterShards: %s\n" % (self.rowsizes, self.colcounts, self.replaysegid, self.replaypos, self.tsmin, self.tsmax, self.maxlocaldeletiontime, self.bloomfilterfpchance, self.compressionratio, self.partitioner, self.ancestors, self.tombstonehistogram, self.sstablelevel, self.repairedat, self.mincolnames, self.maxcolnames, self.haslegacycountershards)
+        elif self.version >= 'ja':
+            return "rowSizes: %s\ncolumnCounts: %s\nreplaySegId: %d\nreplayPosition: %d\nminTimestamp: %d\nmaxTimestamp: %d\nmaxLocalDeletionTime: %d\nbloomFilterFPChance: %f\ncompressionRatio: %f\npartitioner: %s\nancestors: %s\ntombstoneHistogram: %s\nsstableLevel: %d\nminColumnNames: %s\nmaxColumnNames: %s\n" % (self.rowsizes, self.colcounts, self.replaysegid, self.replaypos, self.tsmin, self.tsmax, self.maxlocaldeletiontime, self.bloomfilterfpchance, self.compressionratio, self.partitioner, self.ancestors, self.tombstonehistogram, self.sstablelevel, self.mincolnames, self.maxcolnames)
+        elif self.version >= 'ia':
+            return "rowSizes: %s\ncolumnCounts: %s\nreplaySegId: %d\nreplayPosition: %d\nminTimestamp: %d\nmaxTimestamp: %d\ncompressionRatio: %f\npartitioner: %s\nancestors: %s\ntombstoneHistogram: %s\n" % (self.rowsizes, self.colcounts, self.replaysegid, self.replaypos, self.tsmin, self.tsmax, self.compressionratio, self.partitioner, self.ancestors, self.tombstonehistogram)
         
                  
 if len(sys.argv) < 2:
