@@ -5,7 +5,7 @@ token.py - This script converts a given key to token using RandomPartitioner
 
 sstable.py - This script provides common classes to parse SSTable component files
 
-sstable-metadata.py - This script reads the SSTable stats file to display SSTable metadata information. It is tested with version "jb" 
+sstable-metadata.py - This script reads the SSTable stats file to display SSTable metadata information. It supports version "ha" onwards. 
 
 sstable-index.py - This script reads the SSTable index file to display SSTable row index entries. It is tested with version "jb" 
 
