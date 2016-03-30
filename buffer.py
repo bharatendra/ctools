@@ -61,9 +61,11 @@ class Buffer:
 
     def unpack_utf_string(self):
         length = self.unpack_short()
-        self.readbytes(length)
         if length == 0:
             return None
+        if (debug):
+            print "length: %d" % (length)
+        self.readbytes(length)
         format = '%ds' % length
         value = struct.unpack(format, self.buf[self.offset:self.offset+length])[0]
         self.offset += length

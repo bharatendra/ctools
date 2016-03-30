@@ -35,6 +35,7 @@ COUNTER_UPDATE_MASK  = 0x08
 RANGE_TOMBSTONE_MASK = 0x10
 INT_MAX_VALUE = 0x7fffffff
 LONG_MIN_VALUE = 0x8000000000000000
+BUFFSIZE = 65536
 
 class CompressedBuffer(Buffer):
     def __init__(self, datafile, compfile):
@@ -42,6 +43,8 @@ class CompressedBuffer(Buffer):
         if (debug):
             print self.compmetadata
         self.datasize = os.stat(datafile).st_size
+        if (debug):
+            print " data size %d" % (self.datasize)
         self.file = open(datafile, 'r')
         self.chunkno = 0
         self.remaininglen = self.datasize
@@ -65,6 +68,8 @@ class CompressedBuffer(Buffer):
         self.offset = skipbytes
 
     def rebuffer(self):
+        if (debug):
+            print "buflen: %d offset: %d" % (self.buflen, self.offset)        
         self.buf = self.nextchunk()
         assert self.buf != None
         self.offset = 0
@@ -101,6 +106,37 @@ class CompressedBuffer(Buffer):
         data = compressed[0:len(compressed)-4]
         uncompressed = lz4.loads(data)
         return uncompressed
+
+class UncompressedBuffer(Buffer):
+    def __init__(self, datafile):
+        self.datasize = os.stat(datafile).st_size
+        self.file = open(datafile, 'r')
+        self.buf = None
+        self.offset = 0
+        self.buflen = 0
+        self.nextchunk = 0
+
+    def rebuffer(self):
+        if (debug):
+            print "buflen: %d offset: %d" % (self.buflen, self.offset)
+        newbuf = bytearray('')
+        if self.remaining() > 0:
+            if (debug):
+                print "remaining: %d remaining data: %s" % (self.remaining(), self.get_remaining())
+            b1 = self.get_remaining()
+            newbuf.extend(b1)
+        if self.nextchunk + BUFFSIZE < self.datasize:
+            newbuf.extend(self.file.read(BUFFSIZE))
+            self.nextchunk = self.nextchunk + BUFFSIZE
+        else:
+            newbuf.extend(self.file.read())
+            self.nextchunk = self.datasize
+        self.buf = str(newbuf)
+        #assert self.buf != None
+        self.buflen = len(self.buf)
+        self.offset = 0
+        if (debug):
+            print "buflen: %d nextchunk: %d datasize: %d" % (self.buflen, self.nextchunk, self.datasize)
 
 class IndexInfo:
     def __init__(self, entries):
@@ -161,11 +197,15 @@ class CompresssionInfo:
         return "class: %s paramcount: %d chunklen: %d uncompressedlen: %d chunkcount: %d" % (self.classname, self.paramcount, self.chunklen, self.uncompressedlen, self.chunkcount)
 
 class SSTableReader:
-    def __init__(self, indexfile, datafile, compfile):
+    def __init__(self, indexfile, datafile, compfile, compressed):
         self.index = IndexInfo.parse(indexfile)
-        self.buf = CompressedBuffer(datafile, compfile)
+        if compressed:
+            self.buf = CompressedBuffer(datafile, compfile)
+        else:
+            self.buf = UncompressedBuffer(datafile)
         self.entryindex = 0
         self.currow = None
+        self.sstable = SSTableFileName.parse(datafile)
 
     def hasnext(self):
         if self.currow != None:
@@ -202,10 +242,14 @@ class SSTableReader:
 
     def unpack_column_name(self):
         name = self.buf.unpack_utf_string()
+        if (debug):
+            print "\ncolumn name: %s" % (name)
         return name
 
     def unpack_column_value(self, name):
         flag = self.buf.unpack_byte()
+        if (debug):
+            print "column type: 0x%02x" % (flag)
         if (flag & RANGE_TOMBSTONE_MASK) != 0:
             maxcol = self.buf.unpack_utf_string()
             deletiontime = self.unpack_deletion_time()
@@ -238,17 +282,32 @@ class Row:
         self.indexentry = indexentry
         self.size = size
         self.reader = reader
+        self.columncount = 0
         self.key = self.reader.buf.unpack_utf_string()
+        if self.reader.sstable.version < 'd':
+            self.size = self.reader.buf.unpack_int()
+        elif self.reader.sstable.version < 'ja':
+            self.size = self.reader.buf.unpack_longlong()
         self.deletiontime = self.reader.unpack_deletion_time()
+        if self.reader.sstable.version < 'ja':
+            self.columncount = self.reader.buf.unpack_int()
         self.colname = None
         self.eof = False
+        if self.reader.sstable.version < 'ja':
+            if self.columncount == 0:
+                self.eof = True
+        self.colscannedcount = 0
 
     def hasnextcolumn(self):
+        if self.columncount > 0 and self.colscannedcount >= self.columncount:
+            self.eof = True
         if self.eof == True:
             return False
         self.colname = self.reader.unpack_column_name()
         if self.colname == None:
             self.eof = True
+        else:
+            self.colscannedcount = self.colscannedcount + 1
         return self.colname != None
 
     def nextcolumn(self):

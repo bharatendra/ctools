@@ -80,9 +80,9 @@ if os.path.isfile(indexfile) != True:
     print "%s not exists" % indexfile
     sys.exit(1)
 
+compressed = True
 if os.path.isfile(compfile) != True:
-    print "%s not exists" % compfile
-    sys.exit(1)
+    compressed = False
 
-reader = SSTableReader(indexfile, datafile, compfile)
+reader = SSTableReader(indexfile, datafile, compfile, compressed)
 export(reader)
