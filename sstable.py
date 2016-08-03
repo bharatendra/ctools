@@ -77,6 +77,11 @@ class CompressedBuffer(Buffer):
         if (debug):
             print "buflen: %d" % (self.buflen)
 
+    def endofdata(self):
+        if self.remaining() == 0 and self.chunkno >= self.compmetadata.chunkcount:
+            return True
+        return False
+
     def nextchunk(self):
         if self.chunkno >= self.compmetadata.chunkcount:
             return
@@ -197,7 +202,7 @@ class CompresssionInfo:
         return "class: %s paramcount: %d chunklen: %d uncompressedlen: %d chunkcount: %d" % (self.classname, self.paramcount, self.chunklen, self.uncompressedlen, self.chunkcount)
 
 class SSTableReader:
-    def __init__(self, indexfile, datafile, compfile, compressed):
+    def __init__(self, indexfile, datafile, compfile, compressed, compositetype):
         self.index = IndexInfo.parse(indexfile)
         if compressed:
             self.buf = CompressedBuffer(datafile, compfile)
@@ -206,6 +211,7 @@ class SSTableReader:
         self.entryindex = 0
         self.currow = None
         self.sstable = SSTableFileName.parse(datafile)
+        self.compositetype = compositetype
 
     def hasnext(self):
         if self.currow != None:
@@ -241,9 +247,28 @@ class SSTableReader:
         return DeletionTime(markedForDeleteAt, localDeletionTime)
 
     def unpack_column_name(self):
+        if (len(self.compositetype) > 0):
+            l = self.buf.unpack_short()
+            if (debug):
+                print "composite column length: ",l
+            if l == 0:
+                return None
+            name = ""
+            for i in xrange(len(self.compositetype)):
+                if i > 0:
+                    name += ":"
+                ctype = self.compositetype[i]
+                if ctype == "TimestampType":
+                    name += self.buf.unpack_date()
+                elif ctype == "UTF8Type":
+                    name += self.buf.unpack_utf_string()
+                self.buf.unpack_byte()
+            if (debug):
+                print "\ncolumn name: %s" % (name)
+            return name
         name = self.buf.unpack_utf_string()
         if (debug):
-            print "\ncolumn name: %s" % (name)
+            print "\ncolumn name: %s" % (name)        
         return name
 
     def unpack_column_value(self, name):

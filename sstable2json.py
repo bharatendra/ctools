@@ -65,7 +65,7 @@ def export(reader):
     sys.stdout.write("\n]\n")
 
 if len(sys.argv) < 2:
-    print "Usage: python sstable <data file>"
+    print "Usage: python sstable <data file> [composite type]"
     sys.exit(1)
 
 datafile = sys.argv[1]
@@ -84,5 +84,8 @@ compressed = True
 if os.path.isfile(compfile) != True:
     compressed = False
 
-reader = SSTableReader(indexfile, datafile, compfile, compressed)
+compositetype = []
+if (len(sys.argv) > 2):
+    compositetype = sys.argv[2].split(",")
+reader = SSTableReader(indexfile, datafile, compfile, compressed, compositetype)
 export(reader)

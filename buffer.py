@@ -18,6 +18,7 @@
 # a stand alone script to read rows and columns in a given SSTable
 
 import struct
+from datetime import datetime
 
 debug = 0
 class Buffer:
@@ -62,7 +63,7 @@ class Buffer:
     def unpack_utf_string(self):
         length = self.unpack_short()
         if length == 0:
-            return None
+            return ""
         if (debug):
             print "length: %d" % (length)
         self.readbytes(length)
@@ -94,6 +95,16 @@ class Buffer:
             self.offset += length
             return value
         return None
+
+    def unpack_date(self):
+        length = self.unpack_short()
+        if length == 0:
+            return ""
+        ts = self.unpack_longlong()
+        date = datetime.fromtimestamp(ts/1000)
+        s = date.strftime("%Y-%m-%d %H:%M")
+        r = s.replace(":", '\\\\:')
+        return r
 
     def skip_data(self):
         length = self.unpack_int()
