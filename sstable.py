@@ -258,9 +258,9 @@ class SSTableReader:
                 if i > 0:
                     name += ":"
                 ctype = self.compositetype[i]
-                if ctype == "TimestampType":
+                if ctype.lower() == "timestamp":
                     name += self.buf.unpack_date()
-                elif ctype == "UTF8Type":
+                elif ctype.lower() == "text" or ctype.lower() == "varchar":
                     name += self.buf.unpack_utf_string()
                 self.buf.unpack_byte()
             if (debug):
