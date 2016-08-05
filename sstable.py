@@ -248,27 +248,43 @@ class SSTableReader:
 
     def unpack_column_name(self):
         if (len(self.compositetype) > 0):
-            l = self.buf.unpack_short()
-            if (debug):
-                print "composite column length: ",l
-            if l == 0:
-                return None
-            name = ""
-            for i in xrange(len(self.compositetype)):
-                if i > 0:
-                    name += ":"
-                ctype = self.compositetype[i]
-                if ctype.lower() == "timestamp":
-                    name += self.buf.unpack_date()
-                elif ctype.lower() == "text" or ctype.lower() == "varchar":
-                    name += self.buf.unpack_utf_string()
-                self.buf.unpack_byte()
-            if (debug):
-                print "\ncolumn name: %s" % (name)
-            return name
+            return self.unpack_composite_column_name()
         name = self.buf.unpack_utf_string()
         if (debug):
             print "\ncolumn name: %s" % (name)        
+        return name
+
+    def unpack_composite_column_name(self):
+        l = self.buf.unpack_short()
+        if (debug):
+            print "composite column length: ",l
+        if l == 0:
+            return None
+        name = ""
+        for i in xrange(len(self.compositetype)):
+            if i > 0:
+                name += ":"
+            ctype = self.compositetype[i]
+            if ctype.lower() == "timestamp":
+                name += self.buf.unpack_date()
+            elif ctype.lower() == "text" or ctype.lower() == "varchar" or ctype.lower() == "utf8":
+                name += self.buf.unpack_utf_string()
+            elif ctype.lower() == "int":
+                self.buf.unpack_short()
+                name += str(self.buf.unpack_int())
+            elif ctype.lower() == "uuid":
+                name += self.buf.unpack_uuid()
+            elif ctype.lower() == "boolean":
+                name += self.buf.unpack_boolean()
+            elif ctype.lower() == "float":
+                self.buf.unpack_short()
+                name += str(self.buf.unpack_float())
+            elif ctype.lower() == "double":
+                self.buf.unpack_short()
+                name += str(self.buf.unpack_double())
+            self.buf.unpack_byte()
+        if (debug):
+            print "\ncolumn name: %s" % (name)
         return name
 
     def unpack_column_value(self, name):

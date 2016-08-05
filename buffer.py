@@ -19,6 +19,7 @@
 
 import struct
 from datetime import datetime
+import uuid
 
 debug = 0
 class Buffer:
@@ -79,6 +80,13 @@ class Buffer:
         self.offset += longlong_size
         return value
 
+    def unpack_float(self):
+        float_size = struct.calcsize('f')
+        self.readbytes(float_size)
+        value = struct.unpack('>f', self.buf[self.offset:self.offset+float_size])[0]
+        self.offset += float_size
+        return value
+
     def unpack_double(self):
         double_size = struct.calcsize('d')
         self.readbytes(double_size)
@@ -105,6 +113,27 @@ class Buffer:
         s = date.strftime("%Y-%m-%d %H:%M")
         r = s.replace(":", '\\\\:')
         return r
+
+    def unpack_uuid(self):
+        length = self.unpack_short()
+        if length == 0:
+            return ""
+        self.readbytes(length)
+        format = '%ds' % length
+        value = struct.unpack(format, self.buf[self.offset:self.offset+length])[0]
+        self.offset += length
+        x = uuid.UUID(bytes=value)
+        return str(x)
+
+    def unpack_boolean(self):
+        length = self.unpack_short()
+        if length == 0:
+            return ""
+        self.readbytes(length)
+        byte = self.unpack_byte()
+        if byte == 0:
+            return "false"
+        return "true"
 
     def skip_data(self):
         length = self.unpack_int()
