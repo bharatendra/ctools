@@ -33,6 +33,8 @@ class Buffer:
     def readbytes(self, count):
         if self.remaining() >= count:
             return
+        if (debug):
+            print "count: ",count
         self.rebuffer()
 
     def rebuffer(self):
@@ -58,6 +60,13 @@ class Buffer:
         byte_size = struct.calcsize('B')
         self.readbytes(byte_size)
         value = struct.unpack('>B', self.buf[self.offset:self.offset+byte_size])[0]
+        self.offset += byte_size
+        return value
+
+    def unpack_signed_byte(self):
+        byte_size = struct.calcsize('b')
+        self.readbytes(byte_size)
+        value = struct.unpack('>b', self.buf[self.offset:self.offset+byte_size])[0]
         self.offset += byte_size
         return value
 
@@ -135,8 +144,49 @@ class Buffer:
             return "false"
         return "true"
 
+    def unpack_vint(self):
+        byte = self.unpack_signed_byte()
+        # MSB bit test
+        if byte & 0x80 != 0x80:
+            return byte
+        # Get number of extra bytes to read
+        mask = 0x80
+        extrabytes = 0
+        while byte & mask != 0:            
+            extrabytes = extrabytes + 1
+            mask = mask >> 1
+        mask = 0x80
+        i = 0
+        while i < extrabytes - 1:
+            mask = mask >> 1
+            mask = mask | 0x80
+            i = i + 1
+        mask = (~mask & 0xff)
+        val = (byte & mask)
+        i = 0
+        while i < extrabytes:
+            val = val << 8
+            byte = self.unpack_signed_byte()
+            val = val | (byte & 0xff)
+            i = i + 1
+        return val
+
+    def unpack_vintlendata(self):
+        length = self.unpack_vint()
+        if length > 0:
+            self.readbytes(length)
+            format = '%ds' % length
+            value = struct.unpack(format, self.buf[self.offset:self.offset+length])[0]
+            self.offset += length
+            return value
+        return None
+
     def skip_data(self):
         length = self.unpack_int()
+        if length > 0:
+            self.offset += length
+
+    def skip_bytes(self, length):
         if length > 0:
             self.offset += length
 

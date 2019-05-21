@@ -39,7 +39,7 @@ BUFFSIZE = 65536
 
 class CompressedBuffer(Buffer):
     def __init__(self, datafile, compfile):
-        self.compmetadata = CompresssionInfo.parse(compfile)
+        self.compmetadata = CompressionInfo.parse(compfile)
         if (debug):
             print self.compmetadata
         self.datasize = os.stat(datafile).st_size
@@ -165,7 +165,34 @@ class IndexInfo:
         return IndexInfo(entries)
     parse = classmethod(parse)
 
-class CompresssionInfo:
+class IndexSummary:
+     def __init__(self, offsetCount, fullSamplingSummarySize, minIndexInterval, samplingLevel, first, last):
+         self.offsetCount = offsetCount
+         self.fullSamplingSummarySize = fullSamplingSummarySize
+         self.minIndexInterval = minIndexInterval
+         self.samplingLevel = samplingLevel
+         self.first = first
+         self.last = last
+
+     def parse(self, filename):
+         size = os.stat(filename).st_size
+         remaining = size
+         f = open(filename, 'r')
+         buf = Buffer(f.read())
+         f.close()
+         minIndexInterval = buf.unpack_int()
+         offsetCount = buf.unpack_int()
+         offheapSize = buf.unpack_longlong()
+         samplingLevel = buf.unpack_int()
+         fullSamplingSummarySize = buf.unpack_int()
+         buf.skip_bytes(offsetCount * 4)
+         buf.skip_bytes(offheapSize - offsetCount * 4);
+         first = buf.unpack_data()
+         last = buf.unpack_data()
+         return IndexSummary(offsetCount, fullSamplingSummarySize, minIndexInterval, samplingLevel, first, last)
+     parse = classmethod(parse)
+
+class CompressionInfo:
     def __init__(self, classname, pc, params, datalen, clen, cc, offsets):
         self.classname = classname
         self.paramcount = pc
@@ -195,7 +222,7 @@ class CompresssionInfo:
         for i in xrange(chunkcount):
             chunkoffset = buf.unpack_longlong()
             offsets.append(chunkoffset)
-        return CompresssionInfo(classname, paramcount, params, uncompressedlen, chunklen, chunkcount, offsets)
+        return CompressionInfo(classname, paramcount, params, uncompressedlen, chunklen, chunkcount, offsets)
     parse = classmethod(parse)
 
     def __repr__(self):
@@ -409,7 +436,8 @@ class SSTableFileName:
         self.component = component
 
     def parse(self, filename):
-        #usertable-data-ka-1-Statistics.db
+        if (debug):
+            print filename
         name = os.path.basename(filename)
         m = re.compile(r'(.*)-(.*)-(.*)-(.*)-(.*).db').match(name)
         if m != None:
@@ -419,6 +447,15 @@ class SSTableFileName:
             gen = m.groups()[3]
             comp = m.groups()[4]
             return SSTableFileName(ks, cf, ver, gen, comp)
+        else:
+            # Check if it is a latest version >= 3.0
+            m = re.compile(r'(.*)-(.*)-(.*)-(.*).db').match(name)
+            if m != None:
+                ver = m.groups()[0]
+                gen = m.groups()[1]
+                fmt = m.groups()[2]
+                comp = m.groups()[3]
+                return SSTableFileName(None, None, ver, gen, comp)
         return None
     parse = classmethod(parse)
 
