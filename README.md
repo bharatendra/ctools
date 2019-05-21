@@ -7,7 +7,7 @@ token-hexkey.py - This script converts a given key in hex format to token using 
 
 sstable.py - This script provides common classes to parse SSTable component files
 
-sstable-metadata.py - This script reads the SSTable stats file to display SSTable metadata information. It supports version "ha" onwards. 
+sstable-metadata.py - This script reads the SSTable stats file to display SSTable metadata information. It supports version "ha" onwards. Version 3.11 also supported.
 
 sstable-index.py - This script reads the SSTable index file to display SSTable row index entries. It is tested with version "jb" 
 
