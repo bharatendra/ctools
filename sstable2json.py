@@ -48,7 +48,7 @@ def export(reader):
             if firstcol == True:
                 firstcol = False
             else:
-                sys.stdout.write(", ")
+                sys.stdout.write(",\n\t")
             column = row.nextcolumn()
             if isinstance(column, RangeTombstone):
                 sys.stdout.write("[\"%s\",\"%s\",%d,\"t\",%d]" % (column.mincol,column.maxcol,column.deletiontime.markedForDeleteAt,column.deletiontime.localDeletionTime))

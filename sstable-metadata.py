@@ -16,8 +16,6 @@
 # See the License for the specif
 
 # a stand alone script to read metadata of a given SSTable
-
-import sys
 import os
 from buffer import Buffer
 from sstable import SSTableFileName
@@ -26,6 +24,7 @@ from sstable import CompressionInfo
 from datetime import datetime
 import time
 from pytz import utc
+import argparse
 
 class SSTableMetadata:
     descriptor = ''
@@ -295,13 +294,15 @@ class SSTableMetadata:
         elif self.version >= 'ia':
             return "rowSizes: %s\ncolumnCounts: %s\nreplaySegId: %d\nreplayPosition: %d\nminTimestamp: %d\nmaxTimestamp: %d\ncompressionRatio: %f\npartitioner: %s\nancestors: %s\ntombstoneHistogram: %s\n" % (self.rowsizes, self.colcounts, self.replaysegid, self.replaypos, self.tsmin, self.tsmax, self.compressionratio, self.partitioner, self.ancestors, self.tombstonehistogram)
         
-                 
-if len(sys.argv) < 2:
-    print "Usage: python sstable-metadata.py <stats file>"
-    sys.exit(1)
 
-filename = sys.argv[1]
+parser = argparse.ArgumentParser()
+parser.add_argument("-v", "--verbose", help="increase output verbosity", action="store_true")
+parser.add_argument("sstable", type=str, help="SSTable statistics file")
+args = parser.parse_args()
+
+filename = args.sstable
+if args.sstable.find("-Data.db") != -1:
+    filename = args.sstable.replace("-Data.db", "-Statistics.db")
 sstable = SSTableFileName.parse(filename)
-print sstable
-metadata = SSTableMetadata.parse(sys.argv[1], sstable.version)
+metadata = SSTableMetadata.parse(filename, sstable.version)
 print metadata

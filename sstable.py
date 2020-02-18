@@ -21,7 +21,7 @@ import os
 import sys
 import struct
 import binascii
-import lz4
+import lz4.block
 import re
 from buffer import Buffer
 
@@ -109,8 +109,22 @@ class CompressedBuffer(Buffer):
     def uncompress_chunk(self, compressed):
         # skip checksum
         data = compressed[0:len(compressed)-4]
-        uncompressed = lz4.loads(data)
+        uncompressed = lz4.block.decompress(data)
         return uncompressed
+
+    def printbinary(self, b):
+        s = []
+        for i in xrange(len(b)):
+            s.append("%s" % b[i])
+        s1 = "%s" % s
+        s = s1.replace('\', \'\\x', ' ')
+        s = s.replace('\', \'', ' ')
+        print s
+
+    def hexdump(self, b):
+        f=open("./chunk", "wb")
+        f.write(b)
+        f.close()
 
 class UncompressedBuffer(Buffer):
     def __init__(self, datafile):
@@ -372,8 +386,9 @@ class Row:
         if self.eof == True:
             return False
         self.colname = self.reader.unpack_column_name()
-        if self.colname == None:
+        if self.colname == None or self.colname == "":
             self.eof = True
+            self.colname = None
         else:
             self.colscannedcount = self.colscannedcount + 1
         return self.colname != None
