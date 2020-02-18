@@ -17,9 +17,9 @@
 
 # a stand alone script to read rows and columns in a given SSTable
 
-import sys
 import os
 import binascii
+import argparse
 from sstable import *
 
 def export(reader):
@@ -64,11 +64,13 @@ def export(reader):
         sys.stdout.write("]}")
     sys.stdout.write("\n]\n")
 
-if len(sys.argv) < 2:
-    print "Usage: python sstable <data file> [composite type]"
-    sys.exit(1)
+parser = argparse.ArgumentParser()
+parser.add_argument("-v", "--verbose", help="increase output verbosity", action="store_true")
+parser.add_argument("-c", "--composite", help="comma separated column types in composite", type=str)
+parser.add_argument("sstable", type=str, help="SSTable Data file")
+args = parser.parse_args()
 
-datafile = sys.argv[1]
+datafile = args.sstable
 indexfile = datafile.replace("-Data", "-Index")
 compfile = datafile.replace("-Data", "-CompressionInfo")
 
@@ -85,7 +87,7 @@ if os.path.isfile(compfile) != True:
     compressed = False
 
 compositetype = []
-if (len(sys.argv) > 2):
-    compositetype = sys.argv[2].split(",")
+if args.columntypes != None:
+    compositetype = args.columntypes.split(",")
 reader = SSTableReader(indexfile, datafile, compfile, compressed, compositetype)
 export(reader)
