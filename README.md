@@ -1,7 +1,7 @@
 
 A set of tools to help in understading cassandra database storage internals. More detailed description of storage internals can be found at http://distributeddatastore.blogspot.com
 
-token.py - This script converts a given key to token using RandomPartitioner
+gettoken.py - This script converts a given key to token using RandomPartitioner
 
 token-hexkey.py - This script converts a given key in hex format to token using RandomPartitioner
 
