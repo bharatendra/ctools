@@ -11,7 +11,7 @@ sstable-metadata.py - This script reads the SSTable stats file to display SSTabl
 
 sstable-index.py - This script reads the SSTable index file to display SSTable row index entries. It is tested with version "jb" 
 
-sstable2json.py - This script reads the rows and columns in a given SSTable and converts those to JSON format similar to sstable2json tool. It doesn't require access to cassandra column families in system keyspace to decode SSTable data like sstable2json tool. It is tested with version "ic","jb" and "ka"
+sstable2json.py - This script reads the rows and columns in a given SSTable and converts those to JSON format similar to sstable2json tool. It doesn't require access to cassandra column families in system keyspace to decode SSTable data like sstable2json tool. It is tested with version "ic","jb", "ka" and "lb". It supports parsing CQL data
 
 Example: 
 
