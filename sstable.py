@@ -23,9 +23,8 @@ import struct
 import binascii
 import lz4.block
 import re
+import binascii 
 from buffer import Buffer
-
-debug = 0
 
 LIVE_MASK            = 0x00
 DELETION_MASK        = 0x01
@@ -38,12 +37,13 @@ LONG_MIN_VALUE = 0x8000000000000000
 BUFFSIZE = 65536
 
 class CompressedBuffer(Buffer):
-    def __init__(self, datafile, compfile):
+    def __init__(self, datafile, compfile, verbose):
         self.compmetadata = CompressionInfo.parse(compfile)
-        if (debug):
+        self.verbose = verbose
+        if (self.verbose):
             print self.compmetadata
         self.datasize = os.stat(datafile).st_size
-        if (debug):
+        if (self.verbose):
             print " data size %d" % (self.datasize)
         self.file = open(datafile, 'r')
         self.chunkno = 0
@@ -57,7 +57,7 @@ class CompressedBuffer(Buffer):
         skipchunkcount = pos / self.compmetadata.chunklen
         skipbytes = pos % self.compmetadata.chunklen
         seekpos = self.compmetadata.chunkoffsets[skipchunkcount]
-        if (debug):
+        if (self.verbose):
             print "row-pos: %d chunklen: %d skipchunkcount: %d seekpos: %d skipbytes: %d" % (pos, self.compmetadata.chunklen, skipchunkcount, seekpos, skipbytes)
         self.file.seek(seekpos)
         self.buf = None
@@ -68,13 +68,13 @@ class CompressedBuffer(Buffer):
         self.offset = skipbytes
 
     def rebuffer(self):
-        if (debug):
+        if (self.verbose):
             print "buflen: %d offset: %d" % (self.buflen, self.offset)        
         self.buf = self.nextchunk()
         assert self.buf != None
         self.offset = 0
         self.buflen = len(self.buf)
-        if (debug):
+        if (self.verbose):
             print "buflen: %d" % (self.buflen)
 
     def endofdata(self):
@@ -90,18 +90,19 @@ class CompressedBuffer(Buffer):
             chunk = self.file.read(chunklen)
         else:
             chunk = self.file.read()
-        if (debug):
+        if (self.verbose):
             print "chunklen: ", len(chunk)
         self.chunkno += 1
         newbuf = bytearray('')
         if self.remaining() > 0:
-            if (debug):
+            if (self.verbose):
                 print "remaining: %d remaining data: %s" % (self.remaining(), self.get_remaining())
             b1 = self.get_remaining()
             newbuf.extend(b1)
         b = self.uncompress_chunk(chunk)
-        if (debug):
+        if (self.verbose):
             print "uncompressed chunklen: ", len(b)
+            self.hexdump(b)
         newbuf.extend(b)
         #newbuf = self.uncompress_chunk(chunk)
         return str(newbuf)
@@ -127,20 +128,21 @@ class CompressedBuffer(Buffer):
         f.close()
 
 class UncompressedBuffer(Buffer):
-    def __init__(self, datafile):
+    def __init__(self, datafile, verbose):
         self.datasize = os.stat(datafile).st_size
         self.file = open(datafile, 'r')
         self.buf = None
         self.offset = 0
         self.buflen = 0
         self.nextchunk = 0
+        self.verbose = verbose
 
     def rebuffer(self):
-        if (debug):
+        if (self.verbose):
             print "buflen: %d offset: %d" % (self.buflen, self.offset)
         newbuf = bytearray('')
         if self.remaining() > 0:
-            if (debug):
+            if (self.verbose):
                 print "remaining: %d remaining data: %s" % (self.remaining(), self.get_remaining())
             b1 = self.get_remaining()
             newbuf.extend(b1)
@@ -154,7 +156,7 @@ class UncompressedBuffer(Buffer):
         #assert self.buf != None
         self.buflen = len(self.buf)
         self.offset = 0
-        if (debug):
+        if (self.verbose):
             print "buflen: %d nextchunk: %d datasize: %d" % (self.buflen, self.nextchunk, self.datasize)
 
 class IndexInfo:
@@ -174,8 +176,6 @@ class IndexInfo:
             pos = buf.unpack_longlong()
             buf.skip_data()
             entries.append((key, pos))
-        if (debug):
-            print "entries: ", entries
         return IndexInfo(entries)
     parse = classmethod(parse)
 
@@ -243,16 +243,17 @@ class CompressionInfo:
         return "class: %s paramcount: %d chunklen: %d uncompressedlen: %d chunkcount: %d" % (self.classname, self.paramcount, self.chunklen, self.uncompressedlen, self.chunkcount)
 
 class SSTableReader:
-    def __init__(self, indexfile, datafile, compfile, compressed, compositetype):
+    def __init__(self, indexfile, datafile, compfile, compressed, cqlrow, verbose):
         self.index = IndexInfo.parse(indexfile)
         if compressed:
-            self.buf = CompressedBuffer(datafile, compfile)
+            self.buf = CompressedBuffer(datafile, compfile, verbose)
         else:
-            self.buf = UncompressedBuffer(datafile)
+            self.buf = UncompressedBuffer(datafile, verbose)
         self.entryindex = 0
         self.currow = None
-        self.sstable = SSTableFileName.parse(datafile)
-        self.compositetype = compositetype
+        self.sstable = SSTableFileName.parse(datafile, verbose)
+        self.cqlrow = cqlrow
+        self.verbose = verbose
 
     def hasnext(self):
         if self.currow != None:
@@ -267,7 +268,7 @@ class SSTableReader:
             rowsize = self.index.entries[i + 1][1] - self.index.entries[i][1]
         else:
             rowsize = self.buf.datasize
-        self.currow = Row(self.index.entries[i], rowsize, self)
+        self.currow = Row(self.index.entries[i], rowsize, self, self.verbose)
         return self.currow
 
     def seek(self, rowkey):
@@ -288,49 +289,46 @@ class SSTableReader:
         return DeletionTime(markedForDeleteAt, localDeletionTime)
 
     def unpack_column_name(self):
-        if (len(self.compositetype) > 0):
+        if (self.cqlrow):
             return self.unpack_composite_column_name()
         name = self.buf.unpack_utf_string()
-        if (debug):
+        if (self.verbose):
             print "\ncolumn name: %s" % (name)        
         return name
 
     def unpack_composite_column_name(self):
         l = self.buf.unpack_short()
-        if (debug):
+        if (self.verbose):
             print "composite column length: ",l
         if l == 0:
             return None
         name = ""
-        for i in xrange(len(self.compositetype)):
-            if i > 0:
+        pos = self.buf.offset
+        firstcomp = True
+        while self.buf.offset < pos + l:
+            if (self.verbose):
+                print "buf offset: ",self.buf.offset
+            if firstcomp == False:
                 name += ":"
-            ctype = self.compositetype[i]
-            if ctype.lower() == "timestamp":
-                name += self.buf.unpack_date()
-            elif ctype.lower() == "text" or ctype.lower() == "varchar" or ctype.lower() == "utf8":
-                name += self.buf.unpack_utf_string()
-            elif ctype.lower() == "int":
-                self.buf.unpack_short()
-                name += str(self.buf.unpack_int())
-            elif ctype.lower() == "uuid":
-                name += self.buf.unpack_uuid()
-            elif ctype.lower() == "boolean":
-                name += self.buf.unpack_boolean()
-            elif ctype.lower() == "float":
-                self.buf.unpack_short()
-                name += str(self.buf.unpack_float())
-            elif ctype.lower() == "double":
-                self.buf.unpack_short()
-                name += str(self.buf.unpack_double())
-            self.buf.unpack_byte()
-        if (debug):
+            else:
+                firstcomp = False
+            cl = self.buf.unpack_short()
+            if (self.verbose):
+                print "component len: ",cl
+            if cl != 0:
+                name += binascii.hexlify(self.buf.unpack_bytes(cl))
+            #name += self.buf.unpack_utf_string()
+            if (self.verbose):
+                print "clustering key: ",name
+            self.buf.unpack_byte()                
+            
+        if (self.verbose):
             print "\ncolumn name: %s" % (name)
         return name
 
     def unpack_column_value(self, name):
         flag = self.buf.unpack_byte()
-        if (debug):
+        if (self.verbose):
             print "column type: 0x%02x" % (flag)
         if (flag & RANGE_TOMBSTONE_MASK) != 0:
             maxcol = self.buf.unpack_utf_string()
@@ -360,11 +358,13 @@ class SSTableReader:
 
 
 class Row:
-    def __init__(self, indexentry, size, reader):
+    def __init__(self, indexentry, size, reader, verbose):
         self.indexentry = indexentry
         self.size = size
         self.reader = reader
         self.columncount = 0
+        self.verbose = verbose
+        
         self.key = self.reader.buf.unpack_utf_string()
         if self.reader.sstable.version < 'd':
             self.size = self.reader.buf.unpack_int()
@@ -379,8 +379,25 @@ class Row:
             if self.columncount == 0:
                 self.eof = True
         self.colscannedcount = 0
+        if reader.cqlrow:
+            if (self.verbose):
+                print "parsing CQL Row"
+            if (self.verbose):
+                print "parsing clustering key"
+            self.reader.unpack_composite_column_name()
+            # skip the column type
+            self.reader.buf.skip_bytes(1)
+            # read timestamp
+            ts = self.reader.buf.unpack_longlong()
+            # read empty component
+            self.reader.buf.skip_bytes(3)
+            # skip the column type
+            self.reader.buf.skip_bytes(1)
+            
 
     def hasnextcolumn(self):
+        if (self.verbose):
+            print "hasnextcolumn"
         if self.columncount > 0 and self.colscannedcount >= self.columncount:
             self.eof = True
         if self.eof == True:
@@ -450,8 +467,8 @@ class SSTableFileName:
         self.generation = generation
         self.component = component
 
-    def parse(self, filename):
-        if (debug):
+    def parse(self, filename, verbose):
+        if (verbose):
             print filename
         name = os.path.basename(filename)
         m = re.compile(r'(.*)-(.*)-(.*)-(.*)-(.*).db').match(name)

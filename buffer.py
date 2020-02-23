@@ -113,6 +113,15 @@ class Buffer:
             return value
         return None
 
+    def unpack_bytes(self, length):
+        if length > 0:
+            self.readbytes(length)
+            format = '%ds' % length
+            value = struct.unpack(format, self.buf[self.offset:self.offset+length])[0]
+            self.offset += length
+            return value
+        return None
+
     def unpack_date(self):
         length = self.unpack_short()
         if length == 0:

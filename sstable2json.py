@@ -66,7 +66,7 @@ def export(reader):
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-v", "--verbose", help="increase output verbosity", action="store_true")
-parser.add_argument("-k", "--clusteringkey", help="comma separated column types in clustering key", type=str,   action="store", dest='cluster_key')
+parser.add_argument("-c", "--cql", help="parse cql rows", action="store_true")
 parser.add_argument("sstable", type=str, help="SSTable Data file")
 args = parser.parse_args()
 
@@ -86,8 +86,5 @@ compressed = True
 if os.path.isfile(compfile) != True:
     compressed = False
 
-compositetype = []
-if args.cluster_key != None:
-    compositetype = args.cluster_key.split(",")
-reader = SSTableReader(indexfile, datafile, compfile, compressed, compositetype)
+reader = SSTableReader(indexfile, datafile, compfile, compressed, args.cql, args.verbose)
 export(reader)
