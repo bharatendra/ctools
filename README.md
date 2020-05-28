@@ -1,4 +1,4 @@
-Apache Cassandra SSTablle Tool
+Apache Cassandra SSTable Tool
 ------------------------------
 
 A set of tools to work with Cassandra SSTable files.
