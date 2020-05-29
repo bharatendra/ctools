@@ -26,6 +26,8 @@ sstable2json.py - This script reads the rows and columns in a given SSTable and 
 
 Examples
 --------
+$ ./sst.py -m data/lb/iris-9cb598404fd011eabbb8b16d9d604ffd/lb-1-big-Data.db
+rowSizes: ([1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14...
 
 $ python sstable2json.py -c data/lb/irisplot-dbf35720528411eabbb8b16d9d604ffd/lb-1-big-Data.db
 [
