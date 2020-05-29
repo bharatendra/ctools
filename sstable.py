@@ -366,16 +366,16 @@ class Row:
         self.verbose = verbose
         
         self.key = self.reader.buf.unpack_utf_string()
-        if self.reader.sstable.version < 'd':
+        if self.reader.sstable.sstversion < 'd':
             self.size = self.reader.buf.unpack_int()
-        elif self.reader.sstable.version < 'ja':
+        elif self.reader.sstable.sstversion < 'ja':
             self.size = self.reader.buf.unpack_longlong()
         self.deletiontime = self.reader.unpack_deletion_time()
-        if self.reader.sstable.version < 'ja':
+        if self.reader.sstable.sstversion < 'ja':
             self.columncount = self.reader.buf.unpack_int()
         self.colname = None
         self.eof = False
-        if self.reader.sstable.version < 'ja':
+        if self.reader.sstable.sstversion < 'ja':
             if self.columncount == 0:
                 self.eof = True
         self.colscannedcount = 0
@@ -460,37 +460,54 @@ class DeletionTime:
         return self.markedForDeleteAt == LONG_MIN_VALUE and self.localDeletionTime == INT_MAX_VALUE
  
 class SSTableFileName:
-    def __init__(self, ks, cf, version, generation, component):
+    def __init__(self, basedir, version, ks, cf, sstversion, generation, format, component):
+        self.basedir = basedir
+        self.version = version
         self.keyspace = ks
         self.columnfamily = cf
-        self.version = version
+        self.sstversion = sstversion
         self.generation = generation
+        self.format = format
         self.component = component
 
     def parse(self, filename, verbose):
         if (verbose):
             print filename
+        basedir = ""
+        i = filename.rfind("/")
+        if i != -1:
+            basedir = filename[0:i]
         name = os.path.basename(filename)
         m = re.compile(r'(.*)-(.*)-(.*)-(.*)-(.*).db').match(name)
         if m != None:
             ks = m.groups()[0]
             cf = m.groups()[1]
-            ver = m.groups()[2]
+            sstver = m.groups()[2]
             gen = m.groups()[3]
             comp = m.groups()[4]
-            return SSTableFileName(ks, cf, ver, gen, comp)
+            return SSTableFileName(basedir, "2.*", ks, cf, sstver, gen, None. comp)
         else:
             # Check if it is a latest version >= 3.0
             m = re.compile(r'(.*)-(.*)-(.*)-(.*).db').match(name)
             if m != None:
-                ver = m.groups()[0]
+                sstver = m.groups()[0]
                 gen = m.groups()[1]
                 fmt = m.groups()[2]
                 comp = m.groups()[3]
-                return SSTableFileName(None, None, ver, gen, comp)
+                return SSTableFileName(basedir, "3.*", None, None, sstver, gen, fmt, comp)
         return None
     parse = classmethod(parse)
 
+    def indexfile(self):
+        return self.compfile("Index")
+    def statfile(self):
+        return self.compfile("Statistics")
+
+    def compfile(self, comp):
+        if self.version == "2.*":
+            return "%s/%s-%s-%s-%s-%s.db" % (self.basedir, self.keyspace, self.columnfamily, self.sstversion, self.generation, comp)
+        return "%s/%s-%s-%s-%s.db" % (self.basedir, self.sstversion, self.generation, self.format, comp)
+
     def __repr__(self):
-        return "keyspace: %s columnfamily: %s version: %s generation: %s component: %s" % (self.keyspace, self.columnfamily, self.version, self.generation, self.component)
+        return "keyspace: %s columnfamily: %s version: %s generation: %s component: %s" % (self.keyspace, self.columnfamily, self.sstversion, self.generation, self.component)
 

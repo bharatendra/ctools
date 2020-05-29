@@ -17,14 +17,16 @@
 
 # a stand alone script to read metadata of a given SSTable
 from sstmd import SSTableMetadata
+from sstidx import IndexInfo
 from sstable import SSTableFileName
 import argparse
 import sys
 
 
 parser = argparse.ArgumentParser(prog="sst")
-parser.add_argument("-m", "--metadata", dest='md', help="display SSTable metadata", action="store_true")
-parser.add_argument("-v", "--verbose", dest='verbose', help="increase output verbosity", action="store_true")
+parser.add_argument("-m", "--metadata", help="display SSTable metadata", action="store_true")
+parser.add_argument("-i", "--index", help="display SSTable index information", action="store_true")
+parser.add_argument("-v", "--verbose", help="increase output verbosity", action="store_true")
 parser.add_argument("sstable", type=str, help="SSTable file")
 args = parser.parse_args()
 option = "metadata"
@@ -35,12 +37,12 @@ if args.sstable is None:
     print "please specify sstable file"
     sys.exit(1)
 filename = args.sstable
-if args.sstable.find("-Data.db") != -1:
-    filename = args.sstable.replace("-Data.db", "-Statistics.db")
 sstable = SSTableFileName.parse(filename, verbose)
 
-if option == "metadata":
-    metadata = SSTableMetadata.parse(filename, sstable.version)
+if args.metadata:
+    metadata = SSTableMetadata.parse(sstable.statfile(), sstable.sstversion)
     print metadata
-
+elif args.index:
+    index = IndexInfo.parse(sstable.indexfile())
+    print index
 
