@@ -499,11 +499,15 @@ class SSTableFileName:
     parse = classmethod(parse)
 
     def indexfile(self):
-        return self.compfile("Index")
+        return self.componentfile("Index")
     def statfile(self):
-        return self.compfile("Statistics")
+        return self.componentfile("Statistics")
+    def datafile(self):
+        return self.componentfile("Data")
+    def compfile(self):
+        return self.componentfile("CompressionInfo")  
 
-    def compfile(self, comp):
+    def componentfile(self, comp):
         if self.version == "2.*":
             return "%s/%s-%s-%s-%s-%s.db" % (self.basedir, self.keyspace, self.columnfamily, self.sstversion, self.generation, comp)
         return "%s/%s-%s-%s-%s.db" % (self.basedir, self.sstversion, self.generation, self.format, comp)

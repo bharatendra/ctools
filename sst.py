@@ -18,14 +18,18 @@
 # a stand alone script to read metadata of a given SSTable
 from sstmd import SSTableMetadata
 from sstidx import IndexInfo
-from sstable import SSTableFileName
+from sstable import SSTableFileName,SSTableReader
+import sstable2json
 import argparse
 import sys
+import os
 
 
 parser = argparse.ArgumentParser(prog="sst")
 parser.add_argument("-m", "--metadata", help="display SSTable metadata", action="store_true")
 parser.add_argument("-i", "--index", help="display SSTable index information", action="store_true")
+parser.add_argument("-d", "--data", help="display SSTable data in json format", action="store_true")
+parser.add_argument("-c", "--cql", help="display SSTable cql rows", action="store_true")
 parser.add_argument("-v", "--verbose", help="increase output verbosity", action="store_true")
 parser.add_argument("sstable", type=str, help="SSTable file")
 args = parser.parse_args()
@@ -45,4 +49,19 @@ if args.metadata:
 elif args.index:
     index = IndexInfo.parse(sstable.indexfile())
     print index
+elif args.data:
+    if os.path.isfile(sstable.datafile()) != True:
+        print "%s not exists" % sstable.datafile()
+        sys.exit(1)
+
+    if os.path.isfile(sstable.datafile()) != True:
+        print "%s not exists" % sstable.datafile()
+        sys.exit(1)
+
+    compressed = True
+    if os.path.isfile(sstable.compfile()) != True:
+        compressed = False
+
+    reader = SSTableReader(sstable.indexfile(), sstable.datafile(), sstable.compfile(), compressed, args.cql, args.verbose)
+    sstable2json.export(reader)
 
