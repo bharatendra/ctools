@@ -1,7 +1,7 @@
-Apache Cassandra SSTable Tool
-------------------------------
+Apache Cassandra SSTable Offline Tool
+-------------------------------------
 
-A set of tools to work with Cassandra SSTable files.
+A set of tools to work with Cassandra SSTable files offline.
 
 
 Requirements
