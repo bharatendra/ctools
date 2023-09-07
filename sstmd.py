@@ -18,7 +18,6 @@
 # a stand alone script to read metadata of a given SSTable
 import os
 from buffer import Buffer
-from sstable import SSTableFileName
 from sstable import IndexSummary
 from sstable import CompressionInfo
 from datetime import datetime

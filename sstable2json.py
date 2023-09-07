@@ -26,6 +26,31 @@ def export(reader):
     firstrow = True
     print "["
     while reader.hasnext():
+        "read rowa"
+        if firstrow == True:
+            firstrow = False
+        else:
+            sys.stdout.write(",\n")
+        row = reader.next()
+        sys.stdout.write("{\"key\": \"%s\",\n" % binascii.hexlify(row.key))
+        if row.getdeletioninfo().islive() == False:
+            sys.stdout.write(" \"metadata\": ")
+            sys.stdout.write("{");
+            sys.stdout.write("\"deletionInfo\": ")
+            sys.stdout.write("{\"markedForDeleteAt\": %d" %  row.getdeletioninfo().markedForDeleteAt)
+            sys.stdout.write(", \"localDeletionTime\": %d}" %  row.getdeletioninfo().localDeletionTime)
+            sys.stdout.write("}")
+            sys.stdout.write(",\n")
+
+        sys.stdout.write(" ");
+        print row
+        sys.stdout.write("]}")
+    sys.stdout.write("\n]\n")
+
+def export20(reader):
+    firstrow = True
+    print "["
+    while reader.hasnext():
         if firstrow == True:
             firstrow = False
         else:

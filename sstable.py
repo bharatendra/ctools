@@ -25,6 +25,7 @@ import lz4.block
 import re
 import binascii 
 from buffer import Buffer
+import sstmd
 
 LIVE_MASK            = 0x00
 DELETION_MASK        = 0x01
@@ -242,9 +243,11 @@ class CompressionInfo:
     def __repr__(self):
         return "class: %s paramcount: %d chunklen: %d uncompressedlen: %d chunkcount: %d" % (self.classname, self.paramcount, self.chunklen, self.uncompressedlen, self.chunkcount)
 
-class SSTableReader:
+class SSTableReader20:
     def __init__(self, indexfile, datafile, compfile, compressed, cqlrow, verbose):
+        print "verbose: ",verbose
         self.index = IndexInfo.parse(indexfile)
+        print "row count: ",self.index.rowcount
         if compressed:
             self.buf = CompressedBuffer(datafile, compfile, verbose)
         else:
@@ -254,6 +257,8 @@ class SSTableReader:
         self.sstable = SSTableFileName.parse(datafile, verbose)
         self.cqlrow = cqlrow
         self.verbose = verbose
+        #extract metadata
+        self.metadata = sstmd.SSTableMetadata.parse(self.sstable.statfile(), self.sstable.sstversion)
 
     def hasnext(self):
         if self.currow != None:
@@ -356,6 +361,59 @@ class SSTableReader:
                 else:
                     return Column(name, LIVE_MASK, ts, value)
 
+    def unpack_clustering_key(self):
+        # get the cluster types
+        ckey = ""
+        print self.metadata.clusteringtypes
+        for type in self.metadata.clusteringtypes:
+            if ckey != "":
+                ckey = ckey + ":"
+            if type == 'org.apache.cassandra.db.marshal.FloatType':
+                val = self.buf.unpack_float()
+                ckey = ckey + ("%.2f" % val)
+            elif type == 'org.apache.cassandra.db.marshal.Int32Type':
+                val = self.buf.unpack_int()
+                ckey = ckey + ("%d" % val)
+        print "Clustering key: " + ckey
+
+    def unpack_unfiltered_sizes(self):
+        cursize = self.buf.unpack_vint()
+        prevsize = self.buf.unpack_vint()
+        print "unfiltered size: ",cursize," prev unfiltered size: ",prevsize
+
+class SSTableReader(SSTableReader20):
+    def __init__(self, indexfile, datafile, compfile, compressed, cqlrow, verbose):
+        print "Readers"
+        print "verbose: ",verbose
+        self.index = IndexInfo.parse(indexfile)
+        print "row count: ",self.index.rowcount
+        if compressed:
+            self.buf = CompressedBuffer(datafile, compfile, verbose)
+        else:
+            self.buf = UncompressedBuffer(datafile, verbose)
+        self.entryindex = 0
+        self.currow = None
+        self.sstable = SSTableFileName.parse(datafile, verbose)
+        self.cqlrow = cqlrow
+        self.verbose = verbose
+        #extract metadata
+        self.metadata = sstmd.SSTableMetadata.parse(self.sstable.statfile(), self.sstable.sstversion)
+
+    def hasnext(self):
+        if self.buf.remaining() > 0:
+            print "read next row"
+            return True
+        return False
+
+    def next(self):
+        i = self.entryindex
+        self.entryindex += 1
+        if i + 1 < self.index.rowcount:
+            rowsize = self.index.entries[i + 1][1] - self.index.entries[i][1]
+        else:
+            rowsize = self.buf.datasize
+        self.currow = Row(self.index.entries[i], rowsize, self, self.verbose)
+        return self.currow
 
 class Row:
     def __init__(self, indexentry, size, reader, verbose):
@@ -364,13 +422,52 @@ class Row:
         self.reader = reader
         self.columncount = 0
         self.verbose = verbose
-        
+
         self.key = self.reader.buf.unpack_utf_string()
+        if (self.verbose):
+            print "row key: " + self.key
+
+        # extract the deletion time
+        self.deletiontime = self.reader.unpack_deletion_time()
+        if (self.verbose):
+            print "deletion time: ",self.deletiontime.localDeletionTime
+
+        flags = self.reader.buf.unpack_short()
+        self.reader.unpack_clustering_key()
+        self.reader.unpack_unfiltered_sizes()
+        ts = self.reader.buf.unpack_vint()
+        print "timestamp: ",ts
+        flags = self.reader.buf.unpack_byte()
+        len = self.reader.buf.unpack_vint()
+        print "len: ",len
+        val = self.reader.buf.unpack_bytes(len)
+        print "value: %s" % val
+        self.reader.buf.unpack_byte()
+
+    def getdeletioninfo(self):
+        return self.deletiontime
+
+class Row20:
+    def __init__(self, indexentry, size, reader, verbose):
+        self.indexentry = indexentry
+        self.size = size
+        self.reader = reader
+        self.columncount = 0
+        self.verbose = verbose
+
+        self.key = self.reader.buf.unpack_utf_string()
+        if (self.verbose):
+            print "row key: " + self.key
         if self.reader.sstable.sstversion < 'd':
             self.size = self.reader.buf.unpack_int()
         elif self.reader.sstable.sstversion < 'ja':
             self.size = self.reader.buf.unpack_longlong()
+
+        # extract the deletion time
         self.deletiontime = self.reader.unpack_deletion_time()
+        if (self.verbose):
+            print "deletion time: ",self.deletiontime.localDeletionTime
+
         if self.reader.sstable.sstversion < 'ja':
             self.columncount = self.reader.buf.unpack_int()
         self.colname = None
@@ -382,6 +479,19 @@ class Row:
         if reader.cqlrow:
             if (self.verbose):
                 print "parsing CQL Row"
+            if self.reader.sstable.sstversion == 'md':
+                flags = self.reader.buf.unpack_short()
+                self.reader.unpack_clustering_key()
+                self.reader.unpack_unfiltered_sizes()
+                ts = self.reader.buf.unpack_vint()
+                print "timestamp: ",ts
+                flags = self.reader.buf.unpack_byte()
+                len = self.reader.buf.unpack_vint()
+                print "len: ",len
+                self.reader.buf.unpack_bytes(len)
+                self.reader.buf.unpack_byte()
+                print "end of partition"
+                return
             if (self.verbose):
                 print "parsing clustering key"
             self.reader.unpack_composite_column_name()
@@ -393,7 +503,6 @@ class Row:
             self.reader.buf.skip_bytes(3)
             # skip the column type
             self.reader.buf.skip_bytes(1)
-            
 
     def hasnextcolumn(self):
         if (self.verbose):
